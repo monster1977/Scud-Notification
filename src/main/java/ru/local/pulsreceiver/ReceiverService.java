@@ -20,6 +20,8 @@ import java.time.format.DateTimeFormatter;
  */
 public final class ReceiverService extends Service {
     static final String ACTION_STOP = "ru.local.pulsreceiver.action.STOP";
+    static final String ACTION_NAME_UPDATE = "ru.local.pulsreceiver.action.NAME_UPDATE";
+    static final String EXTRA_NAME = "ru.local.pulsreceiver.extra.NAME";
     private static final int NOTIFICATION_ID = 1;
     private static final long WAKE_LOCK_MS = 24 * 60 * 60 * 1000L;
 
@@ -44,10 +46,12 @@ public final class ReceiverService extends Service {
         player = new AlertPlayer();
         // Сеть под контролем владельца: любой POST из локальной сети считается сигналом.
         HttpReceiver started = new HttpReceiver(request -> {
+            String name = request.getName();
             String message = request.queryValue("message");
             if (message == null || message.trim().isEmpty()) message = request.body;
-            settings.logEvent(eventLine(message));
+            settings.logEvent(eventLine(name, message));
             player.play(ReceiverService.this);
+            if (name != null) sendNameToMainActivity(name);
             return HttpReceiver.Reply.ok();
         });
         try {
@@ -77,11 +81,13 @@ public final class ReceiverService extends Service {
         super.onDestroy();
     }
 
-    private static String eventLine(String message) {
+    private static String eventLine(String name, String message) {
         String text = message == null ? "" : message.trim().replaceAll("[\\r\\n\\t]+", " ");
         if (text.isEmpty()) text = "Сигнал без текста";
         if (text.length() > 160) text = text.substring(0, 160) + "…";
-        return LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")) + "  " + text;
+        String sender = name == null ? "" : name.trim();
+        String from = sender.isEmpty() ? "" : " от " + sender;
+        return LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")) + from + ": " + text;
     }
 
     private static String describe(IOException failure) {
@@ -92,7 +98,7 @@ public final class ReceiverService extends Service {
 
     private Notification buildNotification(int port) {
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= 23) flags |= PendingIntent.FLAG_IMMUTABLE;
+        if (Build.VERSION.SDK_INT >= 24) flags |= PendingIntent.FLAG_IMMUTABLE;
         PendingIntent openScreen = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), flags);
         NotificationManager manager = getSystemService(NotificationManager.class);
         Notification.Builder builder;
@@ -111,5 +117,18 @@ public final class ReceiverService extends Service {
                 .setOnlyAlertOnce(true)
                 .setCategory(Notification.CATEGORY_SERVICE);
         return builder.build();
+    }
+
+    /**
+     * Sends the sender name to the open screen. MainActivity listens for it while it is visible.
+     */
+    private void sendNameToMainActivity(String name) {
+        String trimmed = name.trim();
+        if (trimmed.isEmpty()) {
+            return;
+        }
+        sendBroadcast(new Intent(ACTION_NAME_UPDATE)
+                .setPackage(getPackageName())
+                .putExtra(EXTRA_NAME, trimmed));
     }
 }

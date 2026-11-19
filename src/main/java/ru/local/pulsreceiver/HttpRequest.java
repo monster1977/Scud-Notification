@@ -28,6 +28,44 @@ final class HttpRequest {
     /** Header value by lower-case name; header names are stored lower-cased. */
     String header(String name) { return headers.get(name); }
 
+    /**
+     * Returns the sender name: first the X-Scud-Notification/name header, then the name header,
+     * then the name query parameter. Header values are percent-decoded, because the request line
+     * and headers may only carry ASCII bytes. Null when the name is absent.
+     */
+    String getName() {
+        String value = decoded(headerValue("x-scud-notification/name"));
+        if (value == null) value = decoded(headerValue("name"));
+        if (value == null) value = queryValue("name");
+        return value;
+    }
+
+    /** Returns the token from headers: first X-Scud-Notification/token, then token. */
+    String getToken() {
+        String value = decoded(headerValue("x-scud-notification/token"));
+        if (value == null) value = decoded(headerValue("token"));
+        return value;
+    }
+
+    private String headerValue(String key) {
+        return headers.isEmpty() ? null : headers.get(key);
+    }
+
+    /**
+     * Percent-decodes header values as UTF-8; malformed escapes are kept as-is. Blank values are
+     * treated as absent. Query values are already decoded by queryValue, so this applies to headers
+     * only. URLDecoder also maps '+' to a space, so senders should encode spaces as %20.
+     */
+    private static String decoded(String value) {
+        if (value == null || value.isEmpty()) return null;
+        if (!value.contains("%")) return value;
+        try {
+            return URLDecoder.decode(value, "UTF-8");
+        } catch (Exception invalidEncoding) {
+            return value;
+        }
+    }
+
     /** First value of a query parameter, percent-decoded; null when absent. */
     String queryValue(String name) {
         for (String pair : query.split("&")) {

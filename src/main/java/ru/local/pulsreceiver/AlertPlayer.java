@@ -35,12 +35,15 @@ final class AlertPlayer {
         } catch (Exception ignored) { }
     }
 
+    /** Never throws: a missing or busy vibrator must not break the request handler thread. */
     private void vibrate(Context context) {
-        Vibrator vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
-        if (vibrator == null || !vibrator.hasVibrator()) return;
-        long[] pattern = {0, 250, 150, 250};
-        if (Build.VERSION.SDK_INT >= 26) vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1));
-        else vibrator.vibrate(pattern, -1);
+        try {
+            Vibrator vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
+            if (vibrator == null || !vibrator.hasVibrator()) return;
+            long[] pattern = {0, 250, 150, 250};
+            if (Build.VERSION.SDK_INT >= 26) vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1));
+            else vibrator.vibrate(pattern, -1);
+        } catch (Exception unavailable) { }
     }
 
     void stop() {

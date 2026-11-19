@@ -115,4 +115,63 @@ public class HttpRequestTest {
             fail("Expected IOException but got HttpProblem " + wrong.status);
         } catch (IOException expected) { }
     }
+
+    @Test public void prefersSenderNameFromScudHeaderOverOtherSources() throws Exception {
+        HttpRequest request = requestWithNameHeaders();
+        assertEquals("Петя", request.getName());
+    }
+
+    @Test public void readsSenderNameFromPlainHeaderAndDecodesIt() throws Exception {
+        HttpRequest request = parse("POST /signal HTTP/1.1\r\n"
+                + "Host: localhost\r\n"
+                + "Content-Length: 0\r\n"
+                + "Name: Anna%20Petrova\r\n"
+                + "\r\n");
+        assertEquals("Anna Petrova", request.getName());
+    }
+
+    @Test public void fallsBackToQueryParameterWhenNoNameHeaderIsPresent() throws Exception {
+        HttpRequest request = parse("POST /signal?name=%D0%90%D0%BD%D1%8F HTTP/1.1\r\n"
+                + "Host: localhost\r\n"
+                + "Content-Length: 0\r\n"
+                + "\r\n");
+        assertEquals("Аня", request.getName());
+    }
+
+    @Test public void reportsNoSenderNameWhenHeaderIsBlankOrAbsent() throws Exception {
+        HttpRequest blank = parse("POST /signal HTTP/1.1\r\n"
+                + "Host: localhost\r\n"
+                + "Content-Length: 0\r\n"
+                + "Name: \r\n"
+                + "\r\n");
+        assertNull(blank.getName());
+
+        HttpRequest absent = parse("POST /signal HTTP/1.1\r\n"
+                + "Host: localhost\r\n"
+                + "Content-Length: 0\r\n"
+                + "\r\n");
+        assertNull(absent.getName());
+    }
+
+    @Test public void keepsPercentCharacterThatIsNotAnEscapeSequence() throws Exception {
+        HttpRequest request = parse("POST /signal HTTP/1.1\r\n"
+                + "Host: localhost\r\n"
+                + "Content-Length: 0\r\n"
+                + "Name: 100%\r\n"
+                + "\r\n");
+        assertEquals("100%", request.getName());
+    }
+
+    private static HttpRequest requestWithNameHeaders() throws Exception {
+        return parse("POST /signal?name=%D0%90%D0%BD%D1%8F HTTP/1.1\r\n"
+                + "Host: localhost\r\n"
+                + "Content-Length: 0\r\n"
+                + "X-Scud-Notification/name: %D0%9F%D0%B5%D1%82%D1%8F\r\n"
+                + "Name: %D0%90%D0%BD%D1%8F\r\n"
+                + "\r\n");
+    }
+
+    private static HttpRequest parse(String raw) throws Exception {
+        return HttpRequest.parse(new ByteArrayInputStream(raw.getBytes(StandardCharsets.UTF_8)));
+    }
 }
