@@ -30,10 +30,14 @@ public final class ReceiverService extends Service {
 
     private HttpReceiver receiver;
     private AlertPlayer player;
+    private NameSpeaker speaker;
+    private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+    private static volatile String speechStatus = "Озвучивание выключено";
     private PowerManager.WakeLock wakeLock;
 
     public static boolean isRunning() { return running; }
     public static int port() { return listeningPort; }
+    public static String speechStatus() { return speechStatus; }
 
     @Override public IBinder onBind(Intent intent) { return null; }
 
@@ -44,14 +48,23 @@ public final class ReceiverService extends Service {
         ReceiverSettings settings = new ReceiverSettings(this);
         int port = settings.port();
         player = new AlertPlayer();
+        speaker = new NameSpeaker(this, value -> speechStatus = value, () -> player.play(this));
         // Сеть под контролем владельца: любой POST из локальной сети считается сигналом.
         HttpReceiver started = new HttpReceiver(request -> {
-            String name = request.getName();
+            String name = request.speechName();
             String message = request.queryValue("message");
             if (message == null || message.trim().isEmpty()) message = request.body;
             settings.logEvent(eventLine(name, message));
-            player.play(ReceiverService.this);
-            if (name != null) sendNameToMainActivity(name);
+            main.post(() -> {
+                if (speaker == null) return;
+                if (name == null) player.play(ReceiverService.this);
+                else {
+                    player.stop();
+                    player.vibrate(ReceiverService.this);
+                    speaker.speak(name);
+                    sendNameToMainActivity(name);
+                }
+            });
             return HttpReceiver.Reply.ok();
         });
         try {
@@ -74,6 +87,10 @@ public final class ReceiverService extends Service {
     @Override public void onDestroy() {
         if (receiver != null) receiver.stop();
         receiver = null;
+        main.removeCallbacksAndMessages(null);
+        if (speaker != null) speaker.close();
+        speaker = null;
+        speechStatus = "Озвучивание выключено";
         if (player != null) player.stop();
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         running = false;

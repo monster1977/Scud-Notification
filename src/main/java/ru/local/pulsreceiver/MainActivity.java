@@ -39,7 +39,7 @@ public final class MainActivity extends Activity {
     private int BG, INK, MUTED, GREEN, LINE, ACTION, GRAPHITE;
     private ReceiverSettings settings;
     private EditText portField;
-    private TextView statusView, addressView, logView, nameView;
+    private TextView statusView, addressView, logView, nameView, speechView;
     private Button actionButton;
     private String cachedAddress;
     private String senderName;
@@ -179,6 +179,15 @@ public final class MainActivity extends Activity {
         testRow.topMargin = dp(4);
         card.addView(testButton, testRow);
 
+        speechView = text(14, MUTED, Typeface.NORMAL);
+        card.addView(speechView, matchWrap());
+        TextView voiceSettings = text(16, MUTED, Typeface.NORMAL);
+        voiceSettings.setText("Установить русский офлайн-голос");
+        voiceSettings.setPadding(0, dp(8), 0, dp(8));
+        voiceSettings.setOnClickListener(v -> openVoiceSettings());
+        card.addView(voiceSettings, matchWrap());
+        screen.addView(card, matchWrap());
+
         View divider = new View(this);
         divider.setBackgroundColor(LINE);
         LinearLayout.LayoutParams rowParams = matchWrap();
@@ -212,7 +221,7 @@ public final class MainActivity extends Activity {
         ScrollView scroller = new ScrollView(this);
         scroller.setFillViewport(true);
         scroller.addView(logView);
-        screen.addView(scroller, new LinearLayout.LayoutParams(0, 0, 1f));
+        screen.addView(scroller, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         setContentView(screen);
     }
@@ -228,6 +237,22 @@ public final class MainActivity extends Activity {
         Intent intent = new Intent(this, ReceiverService.class);
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
         else startService(intent);
+    }
+
+    private void openVoiceSettings() {
+        try {
+            startActivity(new Intent(android.speech.tts.TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)
+                    .setPackage(NameSpeaker.GOOGLE_ENGINE));
+        } catch (android.content.ActivityNotFoundException unavailable) {
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(
+                        "market://details?id=" + NameSpeaker.GOOGLE_ENGINE)));
+            } catch (android.content.ActivityNotFoundException noStore) {
+                new android.app.AlertDialog.Builder(this).setTitle("Офлайн-озвучивание")
+                        .setMessage("Установите синтезатор речи Google и загрузите русский голос в его настройках. Затем перезапустите приёмник.")
+                        .setPositiveButton("Понятно", null).show();
+            }
+        }
     }
 
     private void stopReceiver() {
@@ -326,6 +351,7 @@ public final class MainActivity extends Activity {
     private void renderState() {
         int port = settings.port();
         boolean active = ReceiverService.isRunning();
+        speechView.setText(ReceiverService.speechStatus());
         actionButton.setText(active ? "Остановить приёмник" : "Запустить приёмник");
         actionButton.setOnClickListener(v -> {
             if (ReceiverService.isRunning()) stopReceiver();

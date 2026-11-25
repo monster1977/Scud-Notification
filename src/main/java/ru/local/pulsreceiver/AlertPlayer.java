@@ -36,7 +36,7 @@ final class AlertPlayer {
     }
 
     /** Never throws: a missing or busy vibrator must not break the request handler thread. */
-    private void vibrate(Context context) {
+    void vibrate(Context context) {
         try {
             Vibrator vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
             if (vibrator == null || !vibrator.hasVibrator()) return;

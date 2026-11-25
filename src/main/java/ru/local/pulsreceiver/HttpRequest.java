@@ -47,6 +47,29 @@ final class HttpRequest {
         return value;
     }
 
+    /** Explicit name wins; message/plain body may contain the name for simpler senders. */
+    String speechName() {
+        String value = getName();
+        if (value == null || value.trim().isEmpty()) value = queryValue("message");
+        if (value == null || value.trim().isEmpty()) {
+            String type = header("content-type");
+            if (type != null && type.toLowerCase(Locale.ROOT).startsWith("application/x-www-form-urlencoded")) {
+                value = null;
+                for (String pair : body.split("&")) {
+                    if (!pair.startsWith("message=")) continue;
+                    try { value = URLDecoder.decode(pair.substring(8), "UTF-8"); }
+                    catch (Exception invalid) { return null; }
+                    break;
+                }
+            } else if (type == null || type.toLowerCase(Locale.ROOT).startsWith("text/plain")) value = body;
+        }
+        if (value == null) return null;
+        value = value.replaceAll("[\\p{Cntrl}\\s]+", " ").trim();
+        if (value.isEmpty()) return null;
+        int count = value.codePointCount(0, value.length());
+        return count <= 160 ? value : value.substring(0, value.offsetByCodePoints(0, 160));
+    }
+
     private String headerValue(String key) {
         return headers.isEmpty() ? null : headers.get(key);
     }
@@ -58,7 +81,7 @@ final class HttpRequest {
      */
     private static String decoded(String value) {
         if (value == null || value.isEmpty()) return null;
-        if (!value.contains("%")) return value;
+        if (!value.contains("%") && !value.contains("+")) return value;
         try {
             return URLDecoder.decode(value, "UTF-8");
         } catch (Exception invalidEncoding) {

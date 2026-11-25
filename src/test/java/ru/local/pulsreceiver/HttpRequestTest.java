@@ -13,6 +13,31 @@ import static org.junit.Assert.fail;
 /** Parsing rules for one HTTP/1.x request; no Android classes involved. */
 public class HttpRequestTest {
 
+    @Test public void speechPrefersExplicitNameOverMessage() throws Exception {
+        assertEquals("Ivan Petrov", parse("POST", "/", "name: Ivan+Petrov\r\n", "").speechName());
+        assertEquals("Иван", parse("POST", "/?message=other", "X-Scud-Notification/name: %D0%98%D0%B2%D0%B0%D0%BD\r\n", "body").speechName());
+        assertEquals("Иван", parse("POST", "/?name=%D0%98%D0%B2%D0%B0%D0%BD&message=other", "", "").speechName());
+    }
+
+    @Test public void speechAcceptsMessageQueryPlainBodyAndForm() throws Exception {
+        assertEquals("Иван Петров", parse("POST", "/?message=%D0%98%D0%B2%D0%B0%D0%BD+%D0%9F%D0%B5%D1%82%D1%80%D0%BE%D0%B2", "", "").speechName());
+        assertEquals("Иван Петров", parse("POST", "/", "Content-Type: text/plain; charset=utf-8\r\n", " Иван\nПетров ").speechName());
+        assertEquals("Иван", parse("POST", "/", "Content-Type: application/x-www-form-urlencoded\r\n", "message=%D0%98%D0%B2%D0%B0%D0%BD").speechName());
+    }
+
+    @Test public void speechSkipsEmptyStructuredAndMalformedBodies() throws Exception {
+        assertNull(parse("POST", "/", "", " \n ").speechName());
+        assertNull(parse("POST", "/", "Content-Type: application/json\r\n", "{\"name\":\"Иван\"}").speechName());
+        assertNull(parse("POST", "/", "Content-Type: application/x-www-form-urlencoded\r\n", "message=%ZZ").speechName());
+    }
+
+    @Test public void speechBoundsLongNamesWithoutSplittingUnicode() throws Exception {
+        String text = "😀".repeat(170);
+        String spoken = parse("POST", "/", "", text).speechName();
+        assertEquals(160, spoken.codePointCount(0, spoken.length()));
+        assertEquals("😀".repeat(160), spoken);
+    }
+
     private static HttpRequest parse(String method, String target, String headers, String body) throws Exception {
         String raw = method + " " + target + " HTTP/1.1\r\n" + headers
                 + "Content-Length: " + body.getBytes(StandardCharsets.UTF_8).length + "\r\n\r\n" + body;
