@@ -2,6 +2,7 @@ package ru.local.pulsreceiver;
 
 import android.content.Context;
 import android.media.AudioAttributes;
+import android.media.AudioManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech;
@@ -16,6 +17,7 @@ final class NameSpeaker {
     static final String GOOGLE_ENGINE = "com.google.android.tts";
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ArrayDeque<String> pending = new ArrayDeque<>();
+    private final Context context;
     private final Consumer<String> status;
     private final Runnable fallback;
     private TextToSpeech tts;
@@ -25,6 +27,7 @@ final class NameSpeaker {
     private final Runnable timeout = () -> fail("Озвучивание недоступно. Перезапустите приёмник");
 
     NameSpeaker(Context context, Consumer<String> status, Runnable fallback) {
+        this.context = context;
         this.status = status;
         this.fallback = fallback;
         status.accept("Подготовка русского голоса…");
@@ -66,8 +69,26 @@ final class NameSpeaker {
                 return;
             }
             tts.setAudioAttributes(new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
+            // Увеличиваем громкость синтеза речи до максимума по всем возможным потокам
+            AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            int[] streams = {
+                    AudioManager.STREAM_ALARM,
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.STREAM_NOTIFICATION,
+                    AudioManager.STREAM_SYSTEM,
+                    AudioManager.STREAM_VOICE_CALL
+            };
+            for (int stream : streams) {
+                int max = audioManager.getStreamMaxVolume(stream);
+                if (max > 0) {
+                    audioManager.setStreamVolume(stream, max, 0);
+                }
+            }
+            // Устанавливаем нормальную скорость и тон голоса (если API позволяет)
+            try { tts.setSpeechRate(1.0f); } catch (Exception ignored) {}
+            try { tts.setPitch(1.0f); } catch (Exception ignored) {}
             tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                 @Override public void onStart(String id) { }
                 @Override public void onDone(String id) { main.post(() -> finished(id, false)); }
